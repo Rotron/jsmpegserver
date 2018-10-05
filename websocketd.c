@@ -1,72 +1,85 @@
 #include <libwebsockets.h>
+#include <string.h>
 #include "main.h"
 
-struct wssendbuflist {
-    char *buf;
-    size_t len;
-    int write_mode;
-    struct wssendbuflist *tail;
-};
+#ifndef LWS_MAX_SOCKET_IO_BUF
+#define LWS_MAX_SOCKET_IO_BUF 4096
+#endif
 
-void addwssendbuflist (struct wssendbuflist **bufhead, struct wssendbuflist *buf) {
-    if (*bufhead == NULL) {
-        *bufhead = buf;
-    } else {
-        struct wssendbuflist *tmp = *bufhead;
-        while (tmp->tail != NULL) {
-            tmp = tmp->tail;
-        }
-        tmp->tail = buf;
+sem_t sem;
+
+struct DATAPIPE {
+    char *blob;
+    size_t len;
+    char *topic;
+    struct DATAPIPE *tail;
+};
+struct DATAPIPE *datapipehead = NULL;
+struct DATAPIPE *datapipenow = NULL;
+
+void sendclients (char *buf, size_t len, int mode, char *topic) {
+    struct clientlist *clientlist = findclientlist (topic);
+    while(clientlist != NULL) {
+        lws_write(clientlist->lws, buf + LWS_SEND_BUFFER_PRE_PADDING, len, mode);
+        clientlist = clientlist->tail;
     }
 }
 
 void ws_publish(char *blob, size_t len, char *topic) {
-    struct wssendbuflist *bufhead = NULL;
     size_t remainlen = len;
-    size_t max_fds = getdtablesize();
     while (1) {
-        if (remainlen > max_fds) {
-            struct wssendbuflist *buf = (struct wssendbuflist*)malloc(sizeof(struct wssendbuflist));
-            buf->buf = (char*)malloc(LWS_SEND_BUFFER_PRE_PADDING + max_fds + LWS_SEND_BUFFER_POST_PADDING);
-            memcpy(buf->buf + LWS_SEND_BUFFER_PRE_PADDING, blob + len - remainlen, max_fds);
-            buf->len = max_fds;
+        if (remainlen > LWS_MAX_SOCKET_IO_BUF) {
+            char *buf = (char*)malloc(LWS_SEND_BUFFER_PRE_PADDING + LWS_MAX_SOCKET_IO_BUF + LWS_SEND_BUFFER_POST_PADDING);
+            memcpy(buf + LWS_SEND_BUFFER_PRE_PADDING, blob + len - remainlen, LWS_MAX_SOCKET_IO_BUF);
             if (remainlen == len) {
-                buf->write_mode = LWS_WRITE_BINARY;
+                sendclients (buf, LWS_MAX_SOCKET_IO_BUF, LWS_WRITE_BINARY | LWS_WRITE_NO_FIN, topic);
             } else {
-                buf->write_mode = LWS_WRITE_CONTINUATION;
+                sendclients (buf, LWS_MAX_SOCKET_IO_BUF, LWS_WRITE_CONTINUATION | LWS_WRITE_NO_FIN, topic);
             }
-            buf->tail = NULL;
-            addwssendbuflist (&bufhead, buf);
-            remainlen -= max_fds;
+            free (buf);
+            remainlen -= LWS_MAX_SOCKET_IO_BUF;
         } else {
-            struct wssendbuflist *buf = (struct wssendbuflist*)malloc(sizeof(struct wssendbuflist));
-            buf->buf = (char*)malloc(LWS_SEND_BUFFER_PRE_PADDING + remainlen + LWS_SEND_BUFFER_POST_PADDING);
-            memcpy(buf->buf + LWS_SEND_BUFFER_PRE_PADDING, blob + len - remainlen, remainlen);
-            buf->len = remainlen;
+            char *buf = (char*)malloc(LWS_SEND_BUFFER_PRE_PADDING + remainlen + LWS_SEND_BUFFER_POST_PADDING);
+            memcpy(buf + LWS_SEND_BUFFER_PRE_PADDING, blob + len - remainlen, remainlen);
             if (remainlen == len) {
-                buf->write_mode = LWS_WRITE_BINARY | LWS_WRITE_NO_FIN;
+                sendclients (buf, len, LWS_WRITE_BINARY, topic);
             } else {
-                buf->write_mode = LWS_WRITE_CONTINUATION | LWS_WRITE_NO_FIN;
+                sendclients (buf, len, LWS_WRITE_CONTINUATION, topic);
             }
-            buf->tail = NULL;
-            addwssendbuflist (&bufhead, buf);
+            free (buf);
             break;
         }
     }
-    struct clientlist *clientlist = findclientlist (topic);
-    while(clientlist != NULL) {
-        struct wssendbuflist *tmp = bufhead;
-        while (tmp != NULL) {
-            lws_write(clientlist->lws, tmp->buf + LWS_SEND_BUFFER_PRE_PADDING, tmp->len, tmp->write_mode);
-            tmp = tmp->tail;
-        }
-        clientlist = clientlist->tail;
+}
+
+void pushdatapipe (const char *blob, size_t len, const char *topic) {
+    struct DATAPIPE *datapipe = (struct DATAPIPE*)malloc(sizeof(struct DATAPIPE));
+    datapipe->blob = (char*)malloc(len);
+    memcpy(datapipe->blob, blob, len);
+    datapipe->len = len;
+    size_t size = strlen(topic) + 1;
+    datapipe->topic = (char*)malloc(size);
+    strcpy(datapipe->topic, topic);
+    datapipe->tail = NULL;
+    if (datapipehead == NULL) {
+        datapipehead = datapipe;
+        datapipenow = datapipehead;
+    } else {
+        datapipenow->tail = datapipe;
+        datapipenow = datapipenow->tail;
     }
-    while (bufhead != NULL) {
-        struct wssendbuflist *tmp = bufhead;
-        free(tmp->buf);
-        free(tmp);
-        bufhead = bufhead->tail;
+    sem_post(&sem);
+}
+
+void *popdatapipe (void *arg) {
+    while (1) {
+        sem_wait(&sem);
+        struct DATAPIPE *datapipe = datapipehead;
+        datapipehead = datapipehead->tail;
+        ws_publish(datapipe->blob, datapipe->len, datapipe->topic);
+        free(datapipe->blob);
+        free(datapipe->topic);
+        free(datapipe);
     }
 }
 
@@ -109,15 +122,19 @@ int ws_service_callback(struct lws *lws, enum lws_callback_reasons reason, void 
 }
 
 void websocketd_init () {
+    sem_init(&sem, 0, 0);
+    pthread_t thread;
+    pthread_create(&thread, NULL, popdatapipe, NULL);
     struct lws_context_creation_info info;
     struct lws_protocols protocol;
-    struct lws_context *context;
     memset(&info, 0, sizeof(info));
     memset(&protocol, 0, sizeof(protocol));
+    protocol.name = "www.worldflying.cn"; 
     protocol.callback = ws_service_callback; //这里设置回调函数
+    protocol.rx_buffer_size = 512*1024*1024;
     info.port = 8002; //websocket的端口号
     info.protocols = &protocol;
-    context = lws_create_context(&info);
+    struct lws_context *context = lws_create_context(&info);
     while(1) {
         lws_service(context, 0x7fffffff);
     }

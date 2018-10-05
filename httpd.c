@@ -18,7 +18,7 @@ int connectionHandler(void *cls,
         return MHD_YES;
     }
     if (*upload_data_size != 0) {
-        ws_publish(upload_data, upload_data_size, url);
+        pushdatapipe(upload_data, *upload_data_size, url);
         *upload_data_size = 0;
         return MHD_YES;
     }
@@ -27,7 +27,6 @@ int connectionHandler(void *cls,
     struct MHD_Response *response = MHD_create_response_from_buffer(strlen(html), (void*) html, MHD_RESPMEM_PERSISTENT);
     MHD_add_response_header(response, "Content-Type", "text/plain");
     MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-    // MHD_add_response_header(response, "expires", "Fri, 31 Dec 9999 23:59:59 GMT");
     int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
     MHD_destroy_response(response);
 

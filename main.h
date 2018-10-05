@@ -11,7 +11,7 @@ struct topiclist {
 
 void addnewclient(struct lws *w, char *topic);
 void removeclient (struct lws *lws);
-struct clientlist *findclientlist (char *topic);
+struct clientlist *findclientlist (const char *topic);
 void showtopology (char *filename, int line);
 
 #endif

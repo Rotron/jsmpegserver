@@ -1,6 +1,7 @@
 #include <microhttpd.h>
 #include <string.h>
 #include <stdio.h>
+#include "websocketd.h"
 
 int connectionHandler(void *cls,
             struct MHD_Connection *connection,
@@ -17,7 +18,7 @@ int connectionHandler(void *cls,
         return MHD_YES;
     }
     if (*upload_data_size != 0) {
-        // send_packet();
+        ws_publish(upload_data, upload_data_size, url);
         *upload_data_size = 0;
         return MHD_YES;
     }

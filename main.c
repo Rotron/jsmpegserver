@@ -6,6 +6,10 @@
 
 struct topiclist *topiclisthead = NULL;
 
+struct topiclist *gettopiclisthead () {
+    return topiclisthead;
+}
+
 void addnewclient(struct lws *lws, char *topic) {
     struct topiclist *topiclist;
     if (topiclisthead == NULL) {
@@ -33,7 +37,6 @@ void addnewclient(struct lws *lws, char *topic) {
     }
     struct clientlist *clientlist = (struct clientlist*)malloc(sizeof(struct clientlist));
     clientlist->lws = lws;
-    pthread_mutex_init(&clientlist->mutex, NULL);
     clientlist->tail = NULL;
     if (topiclist->clientlist != NULL) {
         struct clientlist *tmp = topiclist->clientlist;
@@ -60,7 +63,6 @@ int removesubclient (struct topiclist *topiclist, struct lws *lws) {
         }
         if (clientlist->lws == lws) {
             lastclientlist->tail = clientlist->tail;
-            pthread_mutex_destroy(&clientlist->mutex);
             free(clientlist);
             return 1;
         }
@@ -90,6 +92,32 @@ void removeclient (struct lws *lws) {
             return;
         }
         lasttopiclist = topiclist;
+        topiclist = topiclist->tail;
+    }
+}
+
+struct topiclist *findtopicobj (const char *topic) {
+    struct topiclist *topiclist = topiclisthead;
+    while (1) {
+        if (topiclist == NULL) {
+            return NULL;
+        }
+        if (strcmp(topiclist->topic, topic) == 0) {
+            return topiclist;
+        }
+        topiclist = topiclist->tail;
+    }
+}
+
+struct clientlist *finddatapipe (const char *topic) {
+    struct topiclist *topiclist = topiclisthead;
+    while (1) {
+        if (topiclist == NULL) {
+            return NULL;
+        }
+        if (strcmp(topiclist->topic, topic) == 0) {
+            return topiclist->clientlist;
+        }
         topiclist = topiclist->tail;
     }
 }

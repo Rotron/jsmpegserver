@@ -3,6 +3,11 @@
 #include <stdio.h>
 #include "websocketd.h"
 
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/time.h>
+#include <stdlib.h>
+
 int connectionHandler(void *cls,
             struct MHD_Connection *connection,
             const char *url,
@@ -11,21 +16,26 @@ int connectionHandler(void *cls,
             const char *upload_data,
             size_t *upload_data_size,
             void ** ptr) {
-    static int dummy;
-    if (&dummy != *ptr) {
-        /* The first time only the headers are valid, do not respond in the first round... */
-        *ptr = &dummy;
-        return MHD_YES;
-    }
-    if (*upload_data_size != 0) {
-        pushdatapipe(upload_data, *upload_data_size, url);
-        *upload_data_size = 0;
-        return MHD_YES;
+    if (strcmp(method, "POST") == 0) {
+        if (*ptr == NULL) {
+            /* The first time only the headers are valid, do not respond in the first round... */
+            int* tmp = (int*)malloc(sizeof(int));
+            *ptr = tmp;
+            return MHD_YES;
+        }
+        int* tmp = *ptr;
+        if (*upload_data_size != 0) {
+            pushdatapipe(upload_data, *upload_data_size, url);
+            *upload_data_size = 0;
+            return MHD_YES;
+        }
+        free(tmp);
     }
 
     char *html = "This is jsmpegserver, power by https://www.worldflying.cn";
     struct MHD_Response *response = MHD_create_response_from_buffer(strlen(html), (void*) html, MHD_RESPMEM_PERSISTENT);
     MHD_add_response_header(response, "Content-Type", "text/plain");
+    MHD_add_response_header(response, "Access-Control-Allow-Headers", "*");
     MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
     int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
     MHD_destroy_response(response);

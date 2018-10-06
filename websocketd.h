@@ -1,11 +1,11 @@
 #ifndef __WEBSOCKETD_H__
 #define __WEBSOCKETD_H__
 
+#include <libwebsockets.h>
 #include <pthread.h>
 
 struct clientlist {
     struct lws *lws;
-    pthread_mutex_t mutex;
     struct clientlist *tail; 
 };
 

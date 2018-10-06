@@ -16,6 +16,7 @@ void addnewclient(struct lws *lws, char *topic) {
         topiclisthead = (struct topiclist*)malloc(sizeof(struct topiclist));
         topiclisthead->topic = topic;
         topiclisthead->clientlist = NULL;
+        topiclisthead->breakpoint = 0;
         topiclisthead->tail = NULL;
         topiclist = topiclisthead;
     } else {
@@ -29,6 +30,7 @@ void addnewclient(struct lws *lws, char *topic) {
                 topiclist = topiclist->tail;
                 topiclist->topic = topic;
                 topiclist->clientlist = NULL;
+                topiclist->breakpoint = 0;
                 topiclist->tail = NULL;
                 break;
             }
@@ -37,6 +39,7 @@ void addnewclient(struct lws *lws, char *topic) {
     }
     struct clientlist *clientlist = (struct clientlist*)malloc(sizeof(struct clientlist));
     clientlist->lws = lws;
+    clientlist->mode = 0;
     clientlist->tail = NULL;
     if (topiclist->clientlist != NULL) {
         struct clientlist *tmp = topiclist->clientlist;

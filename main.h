@@ -3,18 +3,10 @@
 
 #include "websocketd.h"
 
-struct DATAPIPE {
-    char *blob;
-    size_t len;
-    int mode;
-    struct DATAPIPE *tail;
-};
-
 struct topiclist {
     char *topic;
     struct clientlist *clientlist;
-    struct DATAPIPE *datapipehead;
-    struct DATAPIPE *datapipenow;
+    int breakpoint;
     struct topiclist *tail;
 };
 

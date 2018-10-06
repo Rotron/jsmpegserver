@@ -6,10 +6,11 @@
 
 struct clientlist {
     struct lws *lws;
+    int mode;
     struct clientlist *tail; 
 };
 
-void pushdatapipe (const char *blob, size_t len, const char *topic);
+void ws_publish (const char *blob, size_t len, const char *topic);
 void websocketd_init();
 
 #endif

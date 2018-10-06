@@ -25,7 +25,7 @@ int connectionHandler(void *cls,
         }
         int* tmp = *ptr;
         if (*upload_data_size != 0) {
-            pushdatapipe(upload_data, *upload_data_size, url);
+            ws_publish(upload_data, *upload_data_size, url);
             *upload_data_size = 0;
             return MHD_YES;
         }
